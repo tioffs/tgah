@@ -12,6 +12,7 @@
 - **[Setting up a bot](https://core.telegram.org/widgets/login#setting-up-a-bot)**
 ### Easy to use
 **example http.Server: [`example`](./example)**
+
 ```go
 package main
 
@@ -21,14 +22,14 @@ func main() {
 	// phone number no +
 	phone := "79000000000"
 	// you bot ID
-	botID int32 := 1234567899
+	botID := 1234567899
 	// you bot domain
-	domain :- "yousite.com"
+	domain := "yousite.com"
 	// set setting
-	tgah.Setting(botID, domain)
+	tgah.Setting(int32(botID), domain)
 	// send push notify user (Auth)
 	if err := tgah.SendPhoneTelegram(phone); err != nil {
-		 panic(err)
+		panic(err)
 	}
 	// check accept user is auth you bot
 	user, err := tgah.ChecksIsAcceptUserAuth(phone)
