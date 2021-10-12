@@ -230,11 +230,6 @@ func (c *confirmUser) httpClient(url, method string, body *string) (responseBody
 
 	request.Header.Add("origin", domainURL)
 	request.Header.Add("referer", domainURL)
-	request.Header.Add("X-Forward-For", "188.74.25.126")
-	request.Header.Add("X-real-ip", "188.74.25.126")
-	request.Header.Add("RemoteAddr", "188.74.25.126")
-	request.Header.Add("CF-Connecting-IP", "188.74.25.126")
-	request.Header.Add("remoteip", "188.74.25.126")
 
 	request.Header.Add("User-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4606.81 Safari/537.36")
 	if method == http.MethodPost {
