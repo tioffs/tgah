@@ -24,7 +24,7 @@ var input = document.querySelector('input[name="phone"]');
 function send(){
 phone = input.value
 fetch("/telegram?act=send&phone="+phone, {}).then(r=> r.json().then(data => {
-if (data.status) {
+if (data.status == "success") {
 	button.setAttribute("disabled", true)
 	input.setAttribute("disabled", true)
 	check()
@@ -35,8 +35,9 @@ if (data.error) {alert(data.error)}
 function check(){
 fetch("/telegram?act=check&phone="+phone, {}).then(r=> r.json().then(data => {
 if (data.error) {alert(data.error)}
-if (data.pending) {setTimeout(check, 3000)}
-if (data.id) {document.querySelector('#user').innerHTML = JSON.stringify(data)}
+if (data.status == "cancel") {alert(data.error + data.status)}
+if (data.status == "pending") {setTimeout(check, 3000)}
+if (data.status == "success") {document.querySelector('#user').innerHTML = JSON.stringify(data)}
 })).catch(error => { alert(error) })}
 
 </script>
@@ -54,25 +55,11 @@ func main() {
 	http.HandleFunc("/telegram", func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("act") {
 		case "send":
-			if err := tgah.SendPhoneTelegram(r.URL.Query().Get("phone")); err != nil {
-				ResponseJSON(w, err)
-
-				return
-			}
-			ResponseJSON(w, map[string]bool{"status": true}, http.StatusOK)
+			confirm := tgah.SendPhoneTelegram(r.Context(), r.URL.Query().Get("phone"))
+			ResponseJSON(w, confirm, http.StatusOK)
 		case "check":
-			user, err := tgah.ChecksIsAcceptUserAuth(r.URL.Query().Get("phone"))
-			if err != nil {
-				ResponseJSON(w, err)
-
-				return
-			}
-			if user != nil {
-				ResponseJSON(w, user, http.StatusOK)
-
-				return
-			}
-			ResponseJSON(w, map[string]bool{"pending": true}, http.StatusOK)
+			confirm := tgah.ChecksIsAcceptUserAuth(r.Context(), r.URL.Query().Get("phone"))
+			ResponseJSON(w, confirm, http.StatusOK)
 		}
 	})
 

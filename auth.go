@@ -7,11 +7,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
+
+type status string
 
 const (
 	// regxConfirm regx parse hash.
@@ -30,22 +31,26 @@ const (
 	confirmURL = oauthURL + "auth/push?bot_id=%d&origin=%s&request_access=write"
 	// sendPhoneURL endpoint.
 	sendPhoneURL = oauthURL + "auth/request?bot_id=%d&origin=%s&embed=1&request_access=write"
-	// phone send params body.
-	phone = "phone=%s"
 	// cleanupInterval clean cache time second.
 	cleanupInterval = 10
 	// expires default time second cache delete.
 	expires = 60
 	// cookiesDELETE const status cookie header.
 	cookiesDELETE = "DELETED"
-	// declined User cancel auth.
-	declined = "Declined by the User"
+	// declined user Cancel auth.
+	declined = "Declined by the user"
 	// trueStr check string true.
 	trueStr = "true"
+	// Pending status.
+	Pending status = "pending"
+	// Cancel status.
+	Cancel status = "cancel"
+	// Success status.
+	Success status = "success"
 )
 
-// User struct telegram oauth info User.
-type User struct {
+// user struct telegram oauth info user.
+type user struct {
 	ID        int    `json:"id"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
@@ -61,11 +66,17 @@ type item struct {
 	Created int64
 }
 
-type confirmUser struct {
-	PhoneNumber string
+// Confirm struct status, error checks.
+type Confirm struct {
+	Phone   string  `json:"-"`
+	User    *user   `json:"user,omitempty"`
+	Status  status  `json:"status"`
+	Error   *string `json:"error,omitempty"`
+	hash    string
+	context context.Context
 }
 
-// store memory auth telegram User.
+// store memory auth telegram user.
 var store = make(map[string]item)
 
 // domainUrl site connect bot telegram auth.
@@ -74,7 +85,7 @@ var domainURL string
 // bot id bot telegram.
 var bot int32
 
-// statusCache is auto delete cache not auth User.
+// statusCache is auto delete cache not auth user.
 var statusCache = false
 
 // cache goroutine checking and delete item cache memory.
@@ -121,105 +132,131 @@ func Setting(botID int32, domain string) {
 	bot = botID
 }
 
-// SendPhoneTelegram send push notify telegram User phone.
-func SendPhoneTelegram(userPhone string) (err error) {
-	confirm := &confirmUser{PhoneNumber: userPhone}
-	phone := fmt.Sprintf(phone, userPhone)
-	response, err := confirm.httpClient(fmt.Sprintf(sendPhoneURL, bot, domainURL), http.MethodPost, &phone)
+// SendPhoneTelegram send push notify telegram user phone.
+func SendPhoneTelegram(ctx context.Context, userPhone string) (confirm *Confirm) {
+	confirm = &Confirm{Phone: userPhone, context: ctx, Status: Cancel}
+	response, err := confirm.httpClient(fmt.Sprintf(sendPhoneURL, bot, domainURL), http.MethodPost, confirm.pointerString(fmt.Sprintf("phone=%s", userPhone)))
 	if err != nil {
-		return
-	}
-
-	if string(response) != "true" {
-		err = errors.New(string(response))
+		confirm.Error = confirm.pointerString(err.Error())
 
 		return
 	}
+	statusSendNotify, err := strconv.ParseBool(string(response))
+	if err != nil {
+		confirm.Error = confirm.pointerString(string(response))
+
+		return
+	}
+	if !statusSendNotify {
+		confirm.Error = confirm.pointerString(string(response))
+
+		return
+	}
+
+	confirm.Status = Success
 
 	return
 }
 
-// ChecksIsAcceptUserAuth Checks  Accept User Authentication.
-func ChecksIsAcceptUserAuth(userPhone string) (userProfile *User, err error) {
-	confirm := &confirmUser{PhoneNumber: userPhone}
-	status, err := confirm.inAccept()
-	if err != nil {
+// ChecksIsAcceptUserAuth Checks  Accept user Authentication.
+func ChecksIsAcceptUserAuth(ctx context.Context, userPhone string) (confirm *Confirm) {
+	confirm = &Confirm{Phone: userPhone, context: ctx}
+	confirm.inAccept()
+	if confirm.Status != Success {
 		return
 	}
-	if !status {
+	confirm.parseHash()
+	if confirm.Status == Cancel {
 		return
 	}
-	hash, err := confirm.parseHash()
-	if err != nil {
+	confirm.isConfirm()
+	if confirm.Status == Cancel {
 		return
 	}
-
-	if err = confirm.isConfirm(hash); err != nil {
-		return
-	}
-	userProfile, err = confirm.parseUserProfile()
+	confirm.parseUserProfile()
 
 	return
 }
 
-func (c *confirmUser) inAccept() (status bool, err error) {
-	status = false
-	check, err := c.httpClient(fmt.Sprintf(loginURL, bot, domainURL), http.MethodPost, nil)
+func (c *Confirm) inAccept() {
+	response, err := c.httpClient(fmt.Sprintf(loginURL, bot, domainURL), http.MethodPost, nil)
 	if err != nil {
+		c.Error = c.pointerString(err.Error())
+		c.Status = Cancel
+
 		return
 	}
-	switch string(check) {
+	switch string(response) {
 	case declined:
-		err = errors.New(declined)
+		c.Status = Cancel
+		c.Error = c.pointerString(string(response))
 	case trueStr:
-		status = true
+		c.Status = Success
+	default:
+		c.Status = Pending
 	}
-
-	return
 }
 
-func (c *confirmUser) parseHash() (hash string, err error) {
+func (c *Confirm) parseHash() {
 	parseConfirm, err := c.httpClient(fmt.Sprintf(authURL, bot, domainURL), http.MethodGet, nil)
 	if err != nil {
+		c.Error = c.pointerString(err.Error())
+		c.Status = Cancel
+
 		return
 	}
 	confirm := regexp.MustCompile(regxConfirm)
-	hash = confirm.FindString(string(parseConfirm))
-
-	return
+	c.hash = confirm.FindString(string(parseConfirm))
+	if c.hash == "" {
+		c.Status = Cancel
+	}
+	c.Status = Success
 }
 
-func (c *confirmUser) isConfirm(hash string) (err error) {
-	_, err = c.httpClient(fmt.Sprintf(confirmHash, bot, domainURL, hash), http.MethodGet, nil)
-
-	return
+func (c *Confirm) isConfirm() {
+	_, err := c.httpClient(fmt.Sprintf(confirmHash, bot, domainURL, c.hash), http.MethodGet, nil)
+	if err != nil {
+		c.Status = Cancel
+		c.Error = c.pointerString(err.Error())
+	}
+	c.Status = Success
 }
 
-func (c *confirmUser) parseUserProfile() (u *User, err error) {
+func (c *Confirm) parseUserProfile() {
 	responseUserRaw, err := c.httpClient(fmt.Sprintf(confirmURL, bot, domainURL), http.MethodGet, nil)
 	if err != nil {
+		c.Error = c.pointerString(err.Error())
+		c.Status = Cancel
+
 		return
 	}
 	RegxUserRaw := regexp.MustCompile(regxUserJSON)
 	UserRaw := RegxUserRaw.FindString(string(responseUserRaw))
-	err = json.Unmarshal([]byte(UserRaw), &u)
-	if err == nil {
-		u.Phone = c.PhoneNumber
-	}
+	err = json.Unmarshal([]byte(UserRaw), &c.User)
+	if err != nil {
+		c.Error = c.pointerString(err.Error())
+		c.Status = Cancel
 
-	return
+		return
+	}
+	c.User.Phone = c.Phone
+	c.Status = Success
 }
 
-func (c *confirmUser) httpClient(url, method string, body *string) (responseBody []byte, err error) {
+func (c *Confirm) pointerString(s string) *string {
+	return &s
+}
+
+func (c *Confirm) httpClient(url, method string, body *string) (responseBody []byte, err error) { //nolint:cyclop
 	client := http.Client{}
-	request, err := http.NewRequestWithContext(context.Background(), method, url, nil)
+	request, err := http.NewRequestWithContext(c.context, method, url, nil)
 	if body != nil {
 		request.Body = ioutil.NopCloser(strings.NewReader(*body))
 	}
 	if err != nil {
 		return
 	}
-	cookie, is := getCookies(c.PhoneNumber)
+	cookie, is := getCookies(c.Phone)
 	if is {
 		for key, value := range cookie {
 			request.AddCookie(&http.Cookie{
@@ -232,7 +269,7 @@ func (c *confirmUser) httpClient(url, method string, body *string) (responseBody
 	request.Header.Add("origin", domainURL)
 	request.Header.Add("referer", domainURL)
 
-	request.Header.Add("User-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4606.81 Safari/537.36")
+	request.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4606.81 Safari/537.36")
 	if method == http.MethodPost {
 		request.Header.Add("content-type", "application/x-www-form-urlencoded")
 	}
@@ -251,7 +288,7 @@ func (c *confirmUser) httpClient(url, method string, body *string) (responseBody
 			cookie[c.Name] = c.Value
 		}
 	}
-	setCookies(c.PhoneNumber, cookie)
+	setCookies(c.Phone, cookie)
 
 	responseBody, err = ioutil.ReadAll(response.Body)
 	if err != nil {
