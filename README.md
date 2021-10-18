@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/tioffs/tgah"
@@ -35,14 +34,14 @@ func main() {
 	// set setting
 	tgah.Setting(int32(botID), domain)
 	// send push notify user (Auth)
-	if confirm := tgah.SendPhoneTelegram(context.Background(), phone);
+	if confirm := tgah.SendPhoneTelegram(context.Background(), phone, nil);
 		confirm.Error != nil || confirm.Status != tgah.Success {
 		panic(confirm.Error)
 	}
 	// check accept user is auth you bot
 	for {
 		<-time.After(3 * time.Second)
-		confirm := tgah.ChecksIsAcceptUserAuth(context.Background(), phone)
+		confirm := tgah.ChecksIsAcceptUserAuth(context.Background(), phone, nil)
 		if confirm.Error != nil {
 			panic(confirm.Error)
 		}
@@ -56,19 +55,5 @@ func main() {
 			println(tgah.Pending)
 		}
 	}
-}
-```
-
-#### User profile
-```go
-type user struct {
-    ID        int    `json:"id"`
-    FirstName string `json:"first_name"`
-    LastName  string `json:"last_name"`
-    Username  string `json:"username"`
-    PhotoURL  string `json:"photo_url"`
-    AuthDate  int    `json:"auth_date"`
-    Hash      string `json:"hash"`
-    Phone     string `json:"phone"`
 }
 ```

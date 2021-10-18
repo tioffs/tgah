@@ -68,12 +68,13 @@ type item struct {
 
 // Confirm struct status, error checks.
 type Confirm struct {
-	Phone   string  `json:"-"`
-	User    *user   `json:"user,omitempty"`
-	Status  status  `json:"status"`
-	Error   *string `json:"error,omitempty"`
-	hash    string
-	context context.Context
+	Phone     string  `json:"-"`
+	User      *user   `json:"user,omitempty"`
+	Status    status  `json:"status"`
+	Error     *string `json:"error,omitempty"`
+	UserAgent *string `json:"-"`
+	hash      string
+	context   context.Context
 }
 
 // store memory auth telegram user.
@@ -133,8 +134,8 @@ func Setting(botID int32, domain string) {
 }
 
 // SendPhoneTelegram send push notify telegram user phone.
-func SendPhoneTelegram(ctx context.Context, userPhone string) (confirm *Confirm) {
-	confirm = &Confirm{Phone: userPhone, context: ctx, Status: Cancel}
+func SendPhoneTelegram(ctx context.Context, userPhone string, userAgent *string) (confirm *Confirm) {
+	confirm = &Confirm{Phone: userPhone, context: ctx, Status: Cancel, UserAgent: userAgent}
 	response, err := confirm.httpClient(fmt.Sprintf(sendPhoneURL, bot, domainURL), http.MethodPost, confirm.pointerString(fmt.Sprintf("phone=%s", userPhone)))
 	if err != nil {
 		confirm.Error = confirm.pointerString(err.Error())
@@ -159,8 +160,8 @@ func SendPhoneTelegram(ctx context.Context, userPhone string) (confirm *Confirm)
 }
 
 // ChecksIsAcceptUserAuth Checks  Accept user Authentication.
-func ChecksIsAcceptUserAuth(ctx context.Context, userPhone string) (confirm *Confirm) {
-	confirm = &Confirm{Phone: userPhone, context: ctx}
+func ChecksIsAcceptUserAuth(ctx context.Context, userPhone string, userAgent *string) (confirm *Confirm) {
+	confirm = &Confirm{Phone: userPhone, context: ctx, UserAgent: userAgent}
 	confirm.inAccept()
 	if confirm.Status != Success {
 		return
@@ -268,8 +269,12 @@ func (c *Confirm) httpClient(url, method string, body *string) (responseBody []b
 
 	request.Header.Add("origin", domainURL)
 	request.Header.Add("referer", domainURL)
+	if c.UserAgent != nil {
+		request.Header.Add("user-agent", *c.UserAgent)
+	} else {
+		request.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4606.81 Safari/537.36")
+	}
 
-	request.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4606.81 Safari/537.36")
 	if method == http.MethodPost {
 		request.Header.Add("content-type", "application/x-www-form-urlencoded")
 	}

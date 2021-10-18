@@ -53,12 +53,13 @@ func main() {
 		_, _ = w.Write([]byte(templatesTest))
 	})
 	http.HandleFunc("/telegram", func(w http.ResponseWriter, r *http.Request) {
+		userAgent := r.UserAgent()
 		switch r.URL.Query().Get("act") {
 		case "send":
-			confirm := tgah.SendPhoneTelegram(r.Context(), r.URL.Query().Get("phone"))
+			confirm := tgah.SendPhoneTelegram(r.Context(), r.URL.Query().Get("phone"), &userAgent)
 			ResponseJSON(w, confirm, http.StatusOK)
 		case "check":
-			confirm := tgah.ChecksIsAcceptUserAuth(r.Context(), r.URL.Query().Get("phone"))
+			confirm := tgah.ChecksIsAcceptUserAuth(r.Context(), r.URL.Query().Get("phone"), &userAgent)
 			ResponseJSON(w, confirm, http.StatusOK)
 		}
 	})
